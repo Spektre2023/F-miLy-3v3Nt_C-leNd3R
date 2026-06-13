@@ -70,6 +70,7 @@ const state = {
   pendingFiles: [],     // File[] queued for upload on save
   removeAttachIds: [],  // attachment ids to delete on save
   miniMap: null,
+  subscribed: false,
 };
 
 /* =====================================================================
@@ -79,6 +80,21 @@ function configured(){
   return cfg.SUPABASE_URL && !String(cfg.SUPABASE_URL).includes('PASTE')
       && cfg.SUPABASE_ANON_KEY && !String(cfg.SUPABASE_ANON_KEY).includes('PASTE');
 }
+
+// in-memory store used only when "Keep me signed in" is OFF
+function memStorage(){ let m={}; return { getItem:k=>(k in m?m[k]:null), setItem:(k,v)=>{m[k]=v}, removeItem:k=>{delete m[k]} }; }
+function makeClient(remember){
+  return window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      storageKey: 'familycal-auth',
+      storage: remember ? window.localStorage : memStorage(),
+    }
+  });
+}
+function rememberPref(){ try{ return localStorage.getItem('familycal-remember') !== 'no'; }catch(_){ return true; } }
 
 (function detectDevice(){
   const ua = navigator.userAgent;
@@ -93,15 +109,14 @@ async function init(){
 
   if(!configured()){ $('setupScreen').classList.remove('hidden'); return; }
 
-  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  sb = makeClient(rememberPref());
   $('loginTitle').textContent = cfg.FAMILY_NAME ? cfg.FAMILY_NAME : 'Family Calendar';
 
   wireStaticUI();
-
-  const { data } = await sb.auth.getSession();
-  session = data.session;
-  if(session) enterApp(); else showLogin();
-
+  attachAuth();
+}
+function attachAuth(){
+  // fires once on subscribe (INITIAL_SESSION) and on every sign-in / sign-out
   sb.auth.onAuthStateChange((_e, s)=>{ session = s; if(s){ enterApp(); } else { showLogin(); } });
 }
 
@@ -111,10 +126,16 @@ async function init(){
 function showLogin(){
   $('app').classList.add('hidden');
   $('loginScreen').classList.remove('hidden');
+  const cb = $('rememberMe'); if(cb) cb.checked = rememberPref();
 }
 async function doLogin(){
   const email = $('email').value.trim();
   const password = $('password').value;
+  const remember = $('rememberMe') ? $('rememberMe').checked : true;
+  try{ localStorage.setItem('familycal-remember', remember ? 'yes' : 'no'); }catch(_){}
+  sb = makeClient(remember);                 // rebuild so the session lands in the right storage
+  state.subscribed = false;
+  attachAuth();
   const err = $('loginError');
   err.classList.add('hidden');
   $('loginBtn').textContent = 'Signing in…';
@@ -143,6 +164,8 @@ async function reload(){
   renderDay(state.selected);
 }
 function subscribeRealtime(){
+  if(state.subscribed) return;
+  state.subscribed = true;
   sb.channel('familycal')
     .on('postgres_changes', { event:'*', schema:'public', table:'events' }, reload)
     .on('postgres_changes', { event:'*', schema:'public', table:'attachments' }, ()=>{})
@@ -357,12 +380,18 @@ function clashSet(timed){
    EVENT EDITOR
    ===================================================================== */
 function buildEditorControls(){
-  // category dropdown
-  const sel=$('fCategory'); sel.innerHTML='';
-  CATEGORIES.forEach(c=>{ const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; sel.appendChild(o); });
-  sel.addEventListener('change', ()=>{ const c=catByName(sel.value);
-    if(!$('fTitle').value) $('fTitle').value=c.name;
-    selectColor(c.color); setWho(c.who); });
+  // category dropdown change handler (options are (re)built per open)
+  const sel=$('fCategory');
+  sel.addEventListener('change', ()=>{
+    if(sel.value==='__custom__'){
+      $('customCatField').classList.remove('hidden');
+      $('fCustomCat').focus();
+      return;
+    }
+    $('customCatField').classList.add('hidden');
+    const c=CATEGORIES.find(x=>x.name===sel.value);
+    if(c){ if(!$('fTitle').value) $('fTitle').value=c.name; selectColor(c.color); setWho(c.who); }
+  });
   // who chips
   const who=$('fWho'); who.innerHTML='';
   WHO_OPTIONS.forEach(w=>{ const b=document.createElement('button'); b.type='button'; b.className='chip-toggle'; b.textContent=w; b.dataset.w=w;
@@ -376,14 +405,26 @@ function buildEditorControls(){
     btn.addEventListener('click', ()=>{ $('typeSeg').querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active'); applyType(btn.dataset.type); });
   });
-  // all-day toggle
-  $('fAllDay').addEventListener('change', ()=>{ $('timeField').style.display = $('fAllDay').checked ? 'none':'block'; });
   // helper visibility
   $('fHelper').addEventListener('change', ()=>{ $('helperRoleField').style.display = $('fHelper').value ? 'block':'none'; });
   // address -> map
   $('fAddress').addEventListener('blur', refreshMiniMap);
   // files
   $('fFiles').addEventListener('change', (e)=>{ for(const f of e.target.files) state.pendingFiles.push(f); e.target.value=''; renderAttachments(); });
+}
+function discoveredCategories(){
+  const known=new Set(CATEGORIES.map(c=>c.name));
+  return [...new Set(EVENTS.map(e=>e.category).filter(c=>c && !known.has(c)))];
+}
+function buildCategoryOptions(current){
+  const sel=$('fCategory'); sel.innerHTML='';
+  const add=(name)=>{ const o=document.createElement('option'); o.value=name; o.textContent=name; sel.appendChild(o); };
+  CATEGORIES.forEach(c=>add(c.name));
+  const extra=discoveredCategories();
+  extra.forEach(add);
+  if(current && !CATEGORIES.some(c=>c.name===current) && !extra.includes(current)) add(current);
+  const o=document.createElement('option'); o.value='__custom__'; o.textContent='+ Add custom…'; sel.appendChild(o);
+  sel.value = current || 'Other';
 }
 function selectColor(c){ document.querySelectorAll('#fColors .swatch').forEach(s=>s.classList.toggle('on', s.dataset.c===c));
   if(![...document.querySelectorAll('#fColors .swatch')].some(s=>s.dataset.c===c)){ /* custom cat colour: highlight none */ }
@@ -409,14 +450,14 @@ function openEditor(ev, prefill){
   applyType(type);
 
   $('fTitle').value = e.title || '';
-  $('fCategory').value = e.category || 'Other';
+  buildCategoryOptions(e.category || 'Other');
+  $('customCatField').classList.add('hidden');
+  $('fCustomCat').value = '';
   setWho(e.who && e.who.length ? e.who : catByName(e.category||'Other').who);
   $('fDate').value = e.event_date || fmtDate(state.selected);
   $('fWeekday').value = (e.weekday!=null ? e.weekday : state.selected.getDay());
   $('fMonthDay').value = e.month_day || state.selected.getDate();
-  const allDay = e.is_all_day!==undefined ? e.is_all_day : true;
-  $('fAllDay').checked = allDay;
-  $('timeField').style.display = allDay ? 'none':'block';
+  // time: empty means all-day. New events default to having a time field ready.
   $('fTime').value = e.start_time ? e.start_time.slice(0,5) : '';
   selectColor(e.color || catByName(e.category||'Other').color);
   $('fPlace').value = e.location_name || '';
@@ -496,18 +537,23 @@ async function geocode(addr){
 
 async function saveEvent(){
   const type = state._type || 'one_off';
-  const allDay = $('fAllDay').checked;
+  let category = $('fCategory').value;
+  if(category==='__custom__'){
+    category = $('fCustomCat').value.trim();
+    if(!category){ toast('Type a category name'); return; }
+  }
+  const time = $('fTime').value || null;     // blank time = all-day
   const rec = {
-    title: $('fTitle').value.trim() || $('fCategory').value,
-    category: $('fCategory').value,
-    color: state._color || catByName($('fCategory').value).color,
+    title: $('fTitle').value.trim() || category,
+    category: category,
+    color: state._color || catByName(category).color,
     who: getWho(),
     event_type: type,
     event_date: type==='one_off' ? $('fDate').value : null,
     weekday: type==='weekly' ? +$('fWeekday').value : null,
     month_day: type==='monthly' ? +$('fMonthDay').value : null,
-    is_all_day: allDay,
-    start_time: allDay ? null : ($('fTime').value || null),
+    is_all_day: !time,
+    start_time: time,
     location_name: $('fPlace').value.trim() || null,
     location_address: $('fAddress').value.trim() || null,
     lat: state._latlng ? state._latlng.lat : (state._existingLatLng?.lat ?? null),
@@ -656,14 +702,62 @@ function parseSpeech(text){
 }
 
 /* =====================================================================
+   SEARCH (find any event, especially one-offs)
+   ===================================================================== */
+function openSearch(){ $('searchInput').value=''; renderSearch(''); openSheet('searchSheet'); setTimeout(()=>$('searchInput').focus(),120); }
+function whenLabel(ev){
+  if(ev.event_type==='one_off') return ev.event_date ? niceDate(ev.event_date) : 'No date';
+  if(ev.event_type==='weekly')  return 'Every '+['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][ev.weekday];
+  if(ev.event_type==='daily')   return 'Every day';
+  if(ev.event_type==='monthly') return 'Monthly · day '+ev.month_day;
+  return '';
+}
+function niceDate(s){ const d=parseDate(s); return DOW[d.getDay()]+', '+d.getDate()+' '+MONTHS[d.getMonth()].slice(0,3)+' '+d.getFullYear(); }
+function renderSearch(q){
+  const res=$('searchResults'); res.innerHTML='';
+  const term=q.trim().toLowerCase();
+  if(!term){ res.innerHTML='<div class="empty">Start typing to search across every event — one-offs and repeats.</div>'; return; }
+  const matches=EVENTS.filter(ev=>{
+    const hay=[ev.title,ev.category,(ev.who||[]).join(' '),ev.location_name,ev.notes,ev.prep_items,ev.helper].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(term);
+  });
+  // one-offs first (usually what you're hunting for), then repeats
+  matches.sort((a,b)=> (a.event_type==='one_off'?0:1)-(b.event_type==='one_off'?0:1));
+  if(!matches.length){ res.innerHTML='<div class="empty">Nothing matches “'+escapeHtml(q)+'”.</div>'; return; }
+  matches.slice(0,60).forEach(ev=>{
+    const color=ev.color||catByName(ev.category).color;
+    const row=document.createElement('button'); row.className='search-row';
+    const time = ev.start_time ? ' · '+fmtTime(ev.start_time) : '';
+    const place = ev.location_name ? ' · '+ev.location_name : '';
+    row.innerHTML='<span class="sr-bar" style="background:'+color+'"></span>'+
+      '<span class="sr-main"><span class="sr-title">'+escapeHtml(ev.title||ev.category||'Event')+'</span>'+
+      '<span class="sr-meta">'+escapeHtml(whenLabel(ev)+time+place)+'</span></span>'+
+      (ev.event_type!=='one_off'?'<span class="sr-tag">repeats</span>':'');
+    row.addEventListener('click', ()=>{ closeSheet('searchSheet'); goToEvent(ev); });
+    res.appendChild(row);
+  });
+}
+function goToEvent(ev){
+  let target;
+  if(ev.event_type==='one_off' && ev.event_date) target=parseDate(ev.event_date);
+  else if(ev.event_type==='weekly') target=parseDate(nextDateForWeekday(ev.weekday));
+  else if(ev.event_type==='monthly'){ const d=new Date(); d.setDate(Math.min(ev.month_day||1,28)); target=d; }
+  else target=new Date();
+  state.month=new Date(target.getFullYear(),target.getMonth(),1);
+  state.selected=target; renderCalendar(); renderDay(target);
+  if(document.body.classList.contains('is-iphone')) $('dayPane').classList.add('open');
+  openEditor(ev);
+}
+
+/* =====================================================================
    SHEETS / UI WIRING
    ===================================================================== */
 function openSheet(id){
-  const scrim = id==='editor'?'sheetScrim': id==='voiceSheet'?'voiceScrim':'acctScrim';
+  const scrim = id==='editor'?'sheetScrim': id==='voiceSheet'?'voiceScrim': id==='searchSheet'?'searchScrim':'acctScrim';
   $(scrim).classList.remove('hidden'); $(id).classList.remove('hidden');
 }
 function closeSheet(id){
-  const scrim = id==='editor'?'sheetScrim': id==='voiceSheet'?'voiceScrim':'acctScrim';
+  const scrim = id==='editor'?'sheetScrim': id==='voiceSheet'?'voiceScrim': id==='searchSheet'?'searchScrim':'acctScrim';
   $(scrim).classList.add('hidden'); $(id).classList.add('hidden');
   if(id==='voiceSheet' && recog){ try{recog.stop();}catch(_){} }
 }
@@ -688,6 +782,11 @@ function wireStaticUI(){
   $('voiceMic').addEventListener('click', startVoice);
   $('voiceCancel').addEventListener('click', ()=> closeSheet('voiceSheet'));
   $('voiceScrim').addEventListener('click', ()=> closeSheet('voiceSheet'));
+
+  $('searchBtn').addEventListener('click', openSearch);
+  $('searchClose').addEventListener('click', ()=> closeSheet('searchSheet'));
+  $('searchScrim').addEventListener('click', ()=> closeSheet('searchSheet'));
+  $('searchInput').addEventListener('input', (e)=> renderSearch(e.target.value));
 
   $('acctBtn').addEventListener('click', ()=> openSheet('acctSheet'));
   $('acctClose').addEventListener('click', ()=> closeSheet('acctSheet'));

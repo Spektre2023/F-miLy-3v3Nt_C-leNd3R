@@ -240,3 +240,110 @@ input[type=checkbox]:checked::after{transform:translateX(21px)}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 :focus-visible{outline:2.5px solid var(--tint);outline-offset:2px}
+
+/* =====================================================================
+   v2 VISUAL UPGRADE  —  more depth, better type, more "designed"
+   (appended so these intentionally refine the base rules above)
+   ===================================================================== */
+:root{
+  --tint:#0a74ff; --tint2:#5e5ce6; --tint-press:#0a63d6;
+  --ink:#11131a; --ink-2:#3c4150;
+  --hair:#e9eaf0; --hair-strong:#d6d8e2;
+  --shadow:0 1px 2px rgba(17,19,26,.05), 0 10px 34px rgba(17,19,26,.07);
+  --shadow-soft:0 1px 3px rgba(17,19,26,.06), 0 6px 18px rgba(17,19,26,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a0a0c; --bg-elev:#16171c; --bg-elev-2:#1f2128;
+    --ink:#f5f6fa; --ink-2:#c7cad6; --hair:#2a2c34; --hair-strong:#3a3d47;
+    --tint:#3d8bff;
+  }
+}
+body{
+  background:
+    radial-gradient(1100px 560px at 78% -12%, rgba(94,92,230,.10), transparent 60%),
+    radial-gradient(900px 480px at 8% 4%, rgba(10,116,255,.07), transparent 55%),
+    linear-gradient(180deg, #f6f7fb 0%, #eef0f6 100%);
+  background-attachment:fixed;
+}
+@media (prefers-color-scheme: dark){
+  body{ background:
+    radial-gradient(1000px 520px at 78% -12%, rgba(94,92,230,.16), transparent 60%),
+    linear-gradient(180deg,#0b0c10,#070709); }
+}
+
+/* top bar: bigger, more confident */
+.topbar{ border-bottom:none; box-shadow:0 1px 0 var(--hair); padding-top:calc(var(--safe-top) + 12px); padding-bottom:12px;}
+.month-label{ font-size:25px; font-weight:760; letter-spacing:-.035em; }
+
+/* the calendar sits on its own soft panel on larger screens */
+@media (min-width:781px){
+  .calendar-pane{ margin:14px 0 18px 16px; padding:18px 18px 22px;
+    background:var(--bg-elev); border-radius:22px; box-shadow:var(--shadow); }
+  .layout{ gap:14px; padding-right:0; }
+  .day-pane{ margin:14px 16px 18px 0; border-radius:22px; border-left:none; box-shadow:var(--shadow);
+    background:var(--bg-elev); height:fit-content; position:sticky; top:78px; }
+}
+.weekday-row span{ font-size:11px; letter-spacing:.06em; color:var(--muted); }
+
+/* day cells: hairline, gentle hover lift, refined today + selected */
+.day{ background:var(--bg-elev); border:1px solid var(--hair); border-radius:14px; box-shadow:var(--shadow-soft); }
+@media (hover:hover){ .day:hover{ transform:translateY(-1px); box-shadow:var(--shadow); } }
+.day.dim{ background:transparent; border-color:transparent; box-shadow:none; }
+.day-num{ font-size:13.5px; font-weight:640; color:var(--ink-2); }
+.day.today .day-num{ background:linear-gradient(150deg,var(--tint),var(--tint2)); color:#fff;
+  box-shadow:0 3px 10px rgba(94,92,230,.40); }
+.day.selected{ border-color:transparent; box-shadow:0 0 0 2px var(--tint), var(--shadow); }
+.day.selected.today{ box-shadow:0 0 0 2px var(--tint2), var(--shadow); }
+
+/* event chips: crisper, better weight */
+.chip{ border-radius:7px; padding:3px 7px; font-weight:620; font-size:11px;
+  box-shadow:0 1px 2px rgba(0,0,0,.10); letter-spacing:-.01em; }
+.chip .dot-time{ font-weight:760; }
+
+/* day panel header + rows */
+.day-pane-date{ font-size:23px; font-weight:780; letter-spacing:-.03em; }
+.ev{ border-radius:16px; border-color:var(--hair); box-shadow:var(--shadow-soft); }
+@media (hover:hover){ .ev:hover{ box-shadow:var(--shadow); } }
+.ev-bar{ width:5px; border-radius:5px; }
+.ev-title{ font-size:16px; font-weight:650; letter-spacing:-.01em; }
+
+/* primary buttons get the identity gradient */
+.btn.primary{ background:linear-gradient(150deg,var(--tint),var(--tint2)); box-shadow:0 4px 14px rgba(94,92,230,.30); }
+.btn.primary:active{ background:linear-gradient(150deg,var(--tint-press),#4b49d0); }
+
+/* login / setup card: warmer, more premium */
+.card{ border-radius:26px; padding:36px 28px; box-shadow:0 1px 3px rgba(17,19,26,.06), 0 30px 80px rgba(17,19,26,.12); }
+.brand-mark{ width:72px; height:72px; border-radius:19px; box-shadow:0 10px 30px rgba(94,92,230,.40); }
+.card h1{ font-size:27px; font-weight:740; letter-spacing:-.03em; }
+
+/* colour swatches a touch larger */
+.swatch{ width:34px; height:34px; }
+.swatch.on{ box-shadow:0 0 0 3px var(--bg-elev), 0 0 0 5px var(--tint); border-color:transparent; }
+
+/* "keep me signed in" row */
+.remember{ display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin:6px 2px 14px; font-size:15px; color:var(--ink-2); font-weight:520; text-align:left; }
+.remember input{ flex:none; }
+
+/* when-row: date/day and time side by side */
+.when-row{ align-items:flex-end; }
+.when-row .field{ margin:14px 0 0; }
+.time-field{ max-width:46%; }
+.time-field .opt{ font-style:normal; color:var(--muted); font-weight:480; font-size:11px; }
+
+/* custom category field divider feel */
+#customCatField input{ border-style:dashed; }
+
+/* search */
+.search-field input{ font-size:17px; padding:13px 15px; }
+.search-results{ display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+.search-row{ display:flex; align-items:center; gap:11px; width:100%; text-align:left; cursor:pointer;
+  background:var(--bg); border:1px solid var(--hair); border-radius:14px; padding:11px 12px; font-family:inherit; }
+.search-row:active{ transform:scale(.99); }
+.sr-bar{ width:5px; align-self:stretch; border-radius:5px; flex:none; }
+.sr-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.sr-title{ font-size:16px; font-weight:640; color:var(--ink); }
+.sr-meta{ font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-tag{ font-size:10.5px; font-weight:680; color:var(--muted); background:var(--hair);
+  padding:3px 8px; border-radius:20px; flex:none; text-transform:uppercase; letter-spacing:.04em; }

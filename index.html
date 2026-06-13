@@ -41,6 +41,10 @@
         <span>Password</span>
         <input id="password" type="password" autocomplete="current-password" placeholder="Your password" />
       </label>
+      <label class="remember">
+        <input id="rememberMe" type="checkbox" checked />
+        <span>Keep me signed in</span>
+      </label>
       <button id="loginBtn" class="btn primary block">Sign in</button>
       <p id="loginError" class="error hidden"></p>
     </div>
@@ -58,6 +62,10 @@
         <button id="todayBtn" class="btn ghost small">Today</button>
       </div>
       <div class="topbar-right">
+        <button id="searchBtn" class="btn ghost" aria-label="Search events">
+          <svg viewBox="0 0 24 24" class="ic"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <span class="hide-phone">Search</span>
+        </button>
         <button id="micBtn" class="btn ghost" aria-label="Add by voice">
           <svg viewBox="0 0 24 24" class="ic"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
           <span class="hide-phone">Voice</span>
@@ -121,41 +129,40 @@
         <span>Category</span>
         <select id="fCategory"></select>
       </label>
+      <label class="field hidden" id="customCatField">
+        <span>Custom category name</span>
+        <input id="fCustomCat" type="text" placeholder="e.g. Tutoring, Birthday party" />
+      </label>
 
       <div class="field">
         <span>Who's it for</span>
         <div id="fWho" class="chips"></div>
       </div>
 
-      <!-- when: changes with repeat type -->
-      <div id="whenOneOff" class="field">
-        <span>Date</span>
-        <input id="fDate" type="date" />
-      </div>
-      <div id="whenWeekly" class="field hidden">
-        <span>Day of week</span>
-        <select id="fWeekday">
-          <option value="1">Every Monday</option>
-          <option value="2">Every Tuesday</option>
-          <option value="3">Every Wednesday</option>
-          <option value="4">Every Thursday</option>
-          <option value="5">Every Friday</option>
-          <option value="6">Every Saturday</option>
-          <option value="0">Every Sunday</option>
-        </select>
-      </div>
-      <div id="whenMonthly" class="field hidden">
-        <span>Day of month</span>
-        <input id="fMonthDay" type="number" min="1" max="31" placeholder="e.g. 15" />
-      </div>
-
-      <div class="field-row">
-        <label class="field toggle-field">
-          <span>All-day</span>
-          <input id="fAllDay" type="checkbox" checked />
-        </label>
-        <label class="field" id="timeField">
-          <span>Time</span>
+      <!-- when + time on the same row: time sits right next to the date -->
+      <div class="field-row when-row">
+        <div id="whenOneOff" class="field">
+          <span>Date</span>
+          <input id="fDate" type="date" />
+        </div>
+        <div id="whenWeekly" class="field hidden">
+          <span>Day of week</span>
+          <select id="fWeekday">
+            <option value="1">Every Monday</option>
+            <option value="2">Every Tuesday</option>
+            <option value="3">Every Wednesday</option>
+            <option value="4">Every Thursday</option>
+            <option value="5">Every Friday</option>
+            <option value="6">Every Saturday</option>
+            <option value="0">Every Sunday</option>
+          </select>
+        </div>
+        <div id="whenMonthly" class="field hidden">
+          <span>Day of month</span>
+          <input id="fMonthDay" type="number" min="1" max="31" placeholder="e.g. 15" />
+        </div>
+        <label class="field time-field">
+          <span>Time <em class="opt">· leave blank for all-day</em></span>
           <input id="fTime" type="time" />
         </label>
       </div>
@@ -237,6 +244,23 @@
         <button id="voiceCancel" class="btn ghost">Close</button>
         <button id="voiceMic" class="btn primary">Start talking</button>
       </div>
+    </div>
+  </section>
+
+  <!-- ============ SEARCH ============================================== -->
+  <div id="searchScrim" class="scrim hidden"></div>
+  <section id="searchSheet" class="sheet hidden" role="dialog" aria-modal="true">
+    <div class="sheet-grab"></div>
+    <header class="sheet-head">
+      <button id="searchClose" class="btn ghost small">Close</button>
+      <h2>Find an event</h2>
+      <span style="width:54px"></span>
+    </header>
+    <div class="sheet-body">
+      <label class="field search-field">
+        <input id="searchInput" type="search" placeholder="Search name, who, place, notes…" autocomplete="off" />
+      </label>
+      <div id="searchResults" class="search-results"></div>
     </div>
   </section>
 
