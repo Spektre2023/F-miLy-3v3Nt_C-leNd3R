@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Family" />
+  <meta name="theme-color" content="#0A84FF" />
+  <title>Family Calendar</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ============ SETUP-NEEDED SCREEN (shown if config.js is blank) ===== -->
+  <section id="setupScreen" class="screen center hidden">
+    <div class="card setup-card">
+      <div class="brand-mark"></div>
+      <h1>Almost there</h1>
+      <p>The app isn't connected to your database yet. Open <code>config.js</code>,
+         paste in your two Supabase values, save, and reload this page.</p>
+      <p class="muted small">The setup guide walks you through exactly where to find those two values.</p>
+    </div>
+  </section>
+
+  <!-- ============ LOGIN SCREEN ========================================= -->
+  <section id="loginScreen" class="screen center hidden">
+    <div class="card login-card">
+      <div class="brand-mark"></div>
+      <h1 id="loginTitle">Family Calendar</h1>
+      <p class="muted">Sign in to see this week.</p>
+      <label class="field">
+        <span>Email</span>
+        <input id="email" type="email" autocomplete="username" inputmode="email" placeholder="you@email.com" />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Your password" />
+      </label>
+      <button id="loginBtn" class="btn primary block">Sign in</button>
+      <p id="loginError" class="error hidden"></p>
+    </div>
+  </section>
+
+  <!-- ============ MAIN APP ============================================= -->
+  <main id="app" class="hidden">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="prevMonth" class="icon-btn" aria-label="Previous month">‹</button>
+        <h1 id="monthLabel" class="month-label">Month</h1>
+        <button id="nextMonth" class="icon-btn" aria-label="Next month">›</button>
+        <button id="todayBtn" class="btn ghost small">Today</button>
+      </div>
+      <div class="topbar-right">
+        <button id="micBtn" class="btn ghost" aria-label="Add by voice">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          <span class="hide-phone">Voice</span>
+        </button>
+        <button id="addBtn" class="btn primary" aria-label="Add event">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="hide-phone">Add event</span>
+        </button>
+        <button id="acctBtn" class="icon-btn" aria-label="Account">⋯</button>
+      </div>
+    </header>
+
+    <!-- Calendar + day panel -->
+    <div class="layout">
+      <section class="calendar-pane">
+        <div class="weekday-row" id="weekdayRow"></div>
+        <div class="month-grid" id="monthGrid"></div>
+      </section>
+
+      <!-- Day panel (right on iPad, bottom sheet on iPhone) -->
+      <aside class="day-pane" id="dayPane">
+        <div class="day-pane-head">
+          <div>
+            <div class="day-pane-date" id="dayPaneDate">Select a day</div>
+            <div class="day-pane-sub" id="dayPaneSub">Tap any day to see what's on.</div>
+          </div>
+          <button id="dayPaneClose" class="icon-btn hide-ipad" aria-label="Close">✕</button>
+        </div>
+        <div id="clashBanner" class="clash-banner hidden"></div>
+        <div class="day-events" id="dayEvents"></div>
+        <button id="dayAddBtn" class="btn ghost block add-in-day">+ Add to this day</button>
+      </aside>
+    </div>
+  </main>
+
+  <!-- ============ EVENT EDITOR (modal sheet) =========================== -->
+  <div id="sheetScrim" class="scrim hidden"></div>
+  <section id="editor" class="sheet hidden" aria-modal="true" role="dialog">
+    <div class="sheet-grab"></div>
+    <header class="sheet-head">
+      <button id="editorCancel" class="btn ghost small">Cancel</button>
+      <h2 id="editorTitle">New event</h2>
+      <button id="editorSave" class="btn primary small">Save</button>
+    </header>
+
+    <div class="sheet-body">
+      <!-- repeat type -->
+      <div class="seg" id="typeSeg">
+        <button data-type="one_off" class="seg-btn active">One-off</button>
+        <button data-type="weekly"  class="seg-btn">Weekly</button>
+        <button data-type="daily"   class="seg-btn">Daily</button>
+        <button data-type="monthly" class="seg-btn">Monthly</button>
+      </div>
+
+      <label class="field">
+        <span>Event name</span>
+        <input id="fTitle" type="text" placeholder="e.g. Soccer training" />
+      </label>
+
+      <label class="field">
+        <span>Category</span>
+        <select id="fCategory"></select>
+      </label>
+
+      <div class="field">
+        <span>Who's it for</span>
+        <div id="fWho" class="chips"></div>
+      </div>
+
+      <!-- when: changes with repeat type -->
+      <div id="whenOneOff" class="field">
+        <span>Date</span>
+        <input id="fDate" type="date" />
+      </div>
+      <div id="whenWeekly" class="field hidden">
+        <span>Day of week</span>
+        <select id="fWeekday">
+          <option value="1">Every Monday</option>
+          <option value="2">Every Tuesday</option>
+          <option value="3">Every Wednesday</option>
+          <option value="4">Every Thursday</option>
+          <option value="5">Every Friday</option>
+          <option value="6">Every Saturday</option>
+          <option value="0">Every Sunday</option>
+        </select>
+      </div>
+      <div id="whenMonthly" class="field hidden">
+        <span>Day of month</span>
+        <input id="fMonthDay" type="number" min="1" max="31" placeholder="e.g. 15" />
+      </div>
+
+      <div class="field-row">
+        <label class="field toggle-field">
+          <span>All-day</span>
+          <input id="fAllDay" type="checkbox" checked />
+        </label>
+        <label class="field" id="timeField">
+          <span>Time</span>
+          <input id="fTime" type="time" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Priority colour</span>
+        <div id="fColors" class="swatches"></div>
+      </label>
+
+      <hr class="divider" />
+
+      <label class="field">
+        <span>Place</span>
+        <input id="fPlace" type="text" placeholder="e.g. United Swim Centre" />
+      </label>
+      <label class="field">
+        <span>Address (for map)</span>
+        <input id="fAddress" type="text" placeholder="Street, suburb" />
+      </label>
+      <div id="miniMap" class="mini-map hidden"></div>
+
+      <label class="field">
+        <span>Things to bring / prep</span>
+        <textarea id="fPrep" rows="2" placeholder="e.g. goggles, towel, water bottle"></textarea>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Who helps</span>
+          <select id="fHelper">
+            <option value="">No one needed</option>
+            <option value="Sam">Sam (Grandparent)</option>
+            <option value="Meeah">Meeah (Grandparent)</option>
+          </select>
+        </label>
+        <label class="field" id="helperRoleField">
+          <span>With</span>
+          <select id="fHelperRole">
+            <option value="pickup">Pick-up</option>
+            <option value="dropoff">Drop-off</option>
+            <option value="both">Both</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Cost</span>
+        <input id="fCost" type="text" inputmode="decimal" placeholder="e.g. $25" />
+      </label>
+
+      <label class="field">
+        <span>Notes</span>
+        <textarea id="fNotes" rows="2" placeholder="Anything else to remember"></textarea>
+      </label>
+
+      <div class="field">
+        <span>Photos / videos</span>
+        <div id="attachList" class="attach-list"></div>
+        <label class="btn ghost small attach-btn">
+          + Add photo or video
+          <input id="fFiles" type="file" accept="image/*,video/*" multiple hidden />
+        </label>
+      </div>
+
+      <button id="editorDelete" class="btn danger block hidden">Delete event</button>
+    </div>
+  </section>
+
+  <!-- ============ VOICE QUICK-ADD ====================================== -->
+  <div id="voiceScrim" class="scrim hidden"></div>
+  <section id="voiceSheet" class="sheet voice-sheet hidden" role="dialog" aria-modal="true">
+    <div class="sheet-grab"></div>
+    <div class="voice-body">
+      <div id="voicePulse" class="voice-pulse"><svg viewBox="0 0 24 24" class="ic big"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+      <p id="voiceStatus" class="voice-status">Tap the mic and say the event</p>
+      <p id="voiceHeard" class="voice-heard"></p>
+      <div class="voice-example muted small">Try: "Evelyn ballet every Thursday 4pm at Concord, Meeah picks up"</div>
+      <div class="voice-actions">
+        <button id="voiceCancel" class="btn ghost">Close</button>
+        <button id="voiceMic" class="btn primary">Start talking</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ACCOUNT MENU ========================================= -->
+  <div id="acctScrim" class="scrim hidden"></div>
+  <section id="acctSheet" class="sheet acct-sheet hidden" role="dialog" aria-modal="true">
+    <div class="sheet-grab"></div>
+    <div class="acct-body">
+      <div class="acct-user" id="acctUser">Signed in</div>
+      <button id="logoutBtn" class="btn ghost block">Sign out</button>
+      <button id="acctClose" class="btn ghost block">Close</button>
+    </div>
+  </section>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- libraries (no build step needed) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
