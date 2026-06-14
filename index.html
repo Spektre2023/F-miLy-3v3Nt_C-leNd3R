@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
 
@@ -161,11 +161,18 @@
           <span>Day of month</span>
           <input id="fMonthDay" type="number" min="1" max="31" placeholder="e.g. 15" />
         </div>
-        <label class="field time-field">
-          <span>Time <em class="opt">· leave blank for all-day</em></span>
+      </div>
+      <div class="field-row time-row">
+        <label class="field">
+          <span>Start time</span>
           <input id="fTime" type="time" />
         </label>
+        <label class="field">
+          <span>End time</span>
+          <input id="fEnd" type="time" />
+        </label>
       </div>
+      <p class="time-hint">Leave both blank for an all-day event.</p>
 
       <label class="field">
         <span>Priority colour</span>
@@ -281,6 +288,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

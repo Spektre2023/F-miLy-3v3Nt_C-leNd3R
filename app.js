@@ -28,7 +28,7 @@ const CATEGORIES = [
   { name:'Other',                 color:'#8e8e93', icon:'event',    who:[] },
 ];
 const WHO_OPTIONS = ['Lincoln','Evelyn','Family','Sunny','Ester'];
-const SWATCHES = ['#ff3b30','#ff9f0a','#d4a017','#34c759','#0a84ff','#5e5ce6','#bf5af2','#98989d'];
+const SWATCHES = ['#e0689a','#f48fb1','#ff8a9a','#f6a35c','#e6c84f','#9bcf8f','#7fc8c2','#b06ad1'];
 const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -57,6 +57,16 @@ function parseDate(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y
 function sameDay(a,b){ return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate(); }
 function toMin(t){ if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; }
 function fmtTime(t){ if(!t) return ''; let [h,m]=t.split(':').map(Number); const ap=h>=12?'pm':'am'; const hh=((h+11)%12)+1; return hh+(m?':'+pad(m):'')+ap; }
+function fmtRange(ev){
+  if(ev.is_all_day || !ev.start_time) return 'All day';
+  if(ev.end_time && ev.end_time!==ev.start_time){
+    // share the am/pm when both sides match, e.g. 9:00–10:30am
+    const a=fmtTime(ev.start_time), b=fmtTime(ev.end_time);
+    const apA=a.slice(-2), apB=b.slice(-2);
+    return apA===apB ? a.slice(0,-2)+'–'+b : a+'–'+b;
+  }
+  return fmtTime(ev.start_time);
+}
 function nextDateForWeekday(wd){ const d=new Date(); const diff=(wd-d.getDay()+7)%7; d.setDate(d.getDate()+diff); return fmtDate(d); }
 
 /* ---------- state ---------- */
@@ -300,7 +310,7 @@ function evRow(ev, draggable, clashIds){
   main.appendChild(title);
 
   const meta=document.createElement('div'); meta.className='ev-meta';
-  if(!ev.is_all_day && ev.start_time){ const t=document.createElement('span'); t.className='ev-time'; t.textContent=fmtTime(ev.start_time); meta.appendChild(t); }
+  if(!ev.is_all_day && ev.start_time){ const t=document.createElement('span'); t.className='ev-time'; t.textContent=fmtRange(ev); meta.appendChild(t); }
   else { const t=document.createElement('span'); t.textContent='All day'; meta.appendChild(t); }
   if(ev.location_name){ const l=document.createElement('span'); l.textContent='· '+ev.location_name; meta.appendChild(l); }
   (ev.who||[]).forEach(w=>{ const b=document.createElement('span'); b.className='badge who'; b.textContent=w; meta.appendChild(b); });
@@ -359,14 +369,17 @@ function enableReorder(){ /* handlers attached per-row */ }
 /* =====================================================================
    CLASH DETECTION (pure logic, no AI / no network)
    ===================================================================== */
+function evInterval(e){ const s=toMin(e.start_time); const en=e.end_time?toMin(e.end_time):s; return [s, Math.max(en,s)]; }
 function findClashes(timed){
   const out=[];
   for(let i=0;i<timed.length;i++) for(let j=i+1;j<timed.length;j++){
     const a=timed[i], b=timed[j];
-    const diff=Math.abs(toMin(a.start_time)-toMin(b.start_time));
+    const [as,ae]=evInterval(a), [bs,be]=evInterval(b);
+    const overlap = as < be && bs < ae;             // their time ranges actually overlap
+    const close   = Math.abs(as-bs) <= 90;          // or they start close together (logistics)
     const diffPlace=(a.location_name||'')!==(b.location_name||'');
     const diffWho = JSON.stringify((a.who||[]).slice().sort())!==JSON.stringify((b.who||[]).slice().sort());
-    if(diff<=90 && (diffPlace || diffWho)) out.push([a,b,diff]);
+    if((overlap || close) && (diffPlace || diffWho)) out.push([a,b,Math.abs(as-bs)]);
   }
   return out;
 }
@@ -457,8 +470,9 @@ function openEditor(ev, prefill){
   $('fDate').value = e.event_date || fmtDate(state.selected);
   $('fWeekday').value = (e.weekday!=null ? e.weekday : state.selected.getDay());
   $('fMonthDay').value = e.month_day || state.selected.getDate();
-  // time: empty means all-day. New events default to having a time field ready.
+  // time: empty start means all-day
   $('fTime').value = e.start_time ? e.start_time.slice(0,5) : '';
+  $('fEnd').value  = e.end_time ? e.end_time.slice(0,5) : '';
   selectColor(e.color || catByName(e.category||'Other').color);
   $('fPlace').value = e.location_name || '';
   $('fAddress').value = e.location_address || '';
@@ -542,7 +556,9 @@ async function saveEvent(){
     category = $('fCustomCat').value.trim();
     if(!category){ toast('Type a category name'); return; }
   }
-  const time = $('fTime').value || null;     // blank time = all-day
+  const time = $('fTime').value || null;     // blank start time = all-day
+  let endt = $('fEnd').value || null;
+  if(endt && time && endt <= time) endt = null;   // ignore an end that isn't after the start
   const rec = {
     title: $('fTitle').value.trim() || category,
     category: category,
@@ -554,6 +570,7 @@ async function saveEvent(){
     month_day: type==='monthly' ? +$('fMonthDay').value : null,
     is_all_day: !time,
     start_time: time,
+    end_time: time ? endt : null,
     location_name: $('fPlace').value.trim() || null,
     location_address: $('fAddress').value.trim() || null,
     lat: state._latlng ? state._latlng.lat : (state._existingLatLng?.lat ?? null),
@@ -727,7 +744,7 @@ function renderSearch(q){
   matches.slice(0,60).forEach(ev=>{
     const color=ev.color||catByName(ev.category).color;
     const row=document.createElement('button'); row.className='search-row';
-    const time = ev.start_time ? ' · '+fmtTime(ev.start_time) : '';
+    const time = (!ev.is_all_day && ev.start_time) ? ' · '+fmtRange(ev) : '';
     const place = ev.location_name ? ' · '+ev.location_name : '';
     row.innerHTML='<span class="sr-bar" style="background:'+color+'"></span>'+
       '<span class="sr-main"><span class="sr-title">'+escapeHtml(ev.title||ev.category||'Event')+'</span>'+
