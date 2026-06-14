@@ -208,52 +208,92 @@ function buildWeekdayRow(){
   const r = $('weekdayRow'); r.innerHTML='';
   DOW.forEach(d=>{ const s=document.createElement('span'); s.textContent=d; r.appendChild(s); });
 }
+function ymKey(d){ return d.getFullYear()+'-'+d.getMonth(); }
 function renderCalendar(){
-  const first = state.month;
-  $('monthLabel').textContent = MONTHS[first.getMonth()] + ' ' + first.getFullYear();
-  const grid = $('monthGrid'); grid.innerHTML='';
-  const startOffset = first.getDay();                  // 0=Sun
-  const start = new Date(first); start.setDate(1 - startOffset);
+  const scroll = $('calScroll');
+  const wasScrolled = state._scrolled;
+  const savedTop = scroll ? scroll.scrollTop : 0;
+  scroll.innerHTML='';
   const today = new Date();
+  const startMonth = new Date(today.getFullYear(), today.getMonth()-6, 1);   // 6 months back
+  const MONTHS_AHEAD = 18;                                                    // ~2 years total
+  if(state._io){ state._io.disconnect(); }
+  state._io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ const b=e.target.closest('.month-block'); if(b) setViewYM(b.dataset.ym); } });
+  }, { root: scroll, rootMargin:'0px 0px -82% 0px', threshold:0 });
 
-  for(let i=0;i<42;i++){
-    const d = new Date(start); d.setDate(start.getDate()+i);
-    const cell = document.createElement('div');
-    cell.className = 'day';
-    const inMonth = d.getMonth()===first.getMonth();
-    if(!inMonth) cell.classList.add('dim');
-    if(sameDay(d,today)) cell.classList.add('today');
-    if(sameDay(d,state.selected)) cell.classList.add('selected');
+  for(let mi=0; mi<=6+MONTHS_AHEAD; mi++){
+    const first = new Date(startMonth.getFullYear(), startMonth.getMonth()+mi, 1);
+    const block = document.createElement('div'); block.className='month-block';
+    block.dataset.ym = ymKey(first);
+    const head = document.createElement('div'); head.className='month-head';
+    head.textContent = MONTHS[first.getMonth()] + ' ' + first.getFullYear();
+    block.appendChild(head);
 
-    const num = document.createElement('div'); num.className='day-num'; num.textContent=d.getDate();
-    cell.appendChild(num);
-
-    const dayList = sortForDay(eventsOnDate(d));
-    const ordered = [...dayList.timed, ...dayList.untimed];
-    const clashIds = clashSet(dayList.timed);
-    const max = document.body.classList.contains('is-iphone') ? 2 : 3;
-    ordered.slice(0,max).forEach(ev=>{
-      const chip=document.createElement('div');
-      chip.className='chip'+(clashIds.has(ev.id)?' flag-clash':'');
-      chip.style.background = ev.color || catByName(ev.category).color;
-      const tt = (!ev.is_all_day && ev.start_time) ? '<span class="dot-time">'+fmtTime(ev.start_time)+'</span> ' : '';
-      chip.innerHTML = tt + escapeHtml(shortTitle(ev));
-      cell.appendChild(chip);
-    });
-    if(ordered.length>max){ const m=document.createElement('div'); m.className='more'; m.textContent='+'+(ordered.length-max)+' more'; cell.appendChild(m); }
-
-    if(inMonth || true){ cell.addEventListener('click', ()=> selectDay(d)); }
-    grid.appendChild(cell);
+    const grid = document.createElement('div'); grid.className='month-grid';
+    const offset = first.getDay();
+    for(let b=0;b<offset;b++){ const e=document.createElement('div'); e.className='day blank'; grid.appendChild(e); }
+    const dim = new Date(first.getFullYear(), first.getMonth()+1, 0).getDate();
+    for(let d=1; d<=dim; d++){ grid.appendChild(dayCell(new Date(first.getFullYear(), first.getMonth(), d), today)); }
+    block.appendChild(grid);
+    scroll.appendChild(block);
+    state._io.observe(head);
   }
+
+  if(!wasScrolled){ scrollToDate(today); state._scrolled = true; setViewYM(ymKey(today)); }
+  else { scroll.scrollTop = savedTop; }
+}
+function dayCell(d, today){
+  const cell = document.createElement('div');
+  cell.className = 'day';
+  cell.dataset.date = fmtDate(d);
+  if(sameDay(d,today)) cell.classList.add('today');
+  if(sameDay(d,state.selected)) cell.classList.add('selected');
+  const num = document.createElement('div'); num.className='day-num'; num.textContent=d.getDate();
+  cell.appendChild(num);
+
+  const dayList = sortForDay(eventsOnDate(d));
+  const ordered = [...dayList.timed, ...dayList.untimed];
+  const clashIds = clashSet(dayList.timed);
+  const max = document.body.classList.contains('is-iphone') ? 3 : 3;
+  ordered.slice(0,max).forEach(ev=>{
+    const chip=document.createElement('div');
+    chip.className='chip'+(clashIds.has(ev.id)?' flag-clash':'');
+    chip.style.background = ev.color || catByName(ev.category).color;
+    const tt = (!ev.is_all_day && ev.start_time) ? '<span class="dot-time">'+fmtTime(ev.start_time)+'</span> ' : '';
+    chip.innerHTML = tt + escapeHtml(shortTitle(ev));
+    cell.appendChild(chip);
+  });
+  if(ordered.length>max){ const m=document.createElement('div'); m.className='more'; m.textContent='+'+(ordered.length-max)+' more'; cell.appendChild(m); }
+  cell.addEventListener('click', ()=> selectDay(d));
+  return cell;
 }
 function shortTitle(ev){ return ev.title || ev.category || 'Event'; }
 
+function setViewYM(ym){
+  state.viewYM = ym;
+  const [y,m] = ym.split('-').map(Number);
+  $('monthLabel').textContent = MONTHS[m] + ' ' + y;
+}
+function scrollToDate(date){
+  const scroll = $('calScroll');
+  const block = scroll.querySelector('.month-block[data-ym="'+ymKey(date)+'"]');
+  if(block) scroll.scrollTop = block.offsetTop - 4;
+}
+function monthNav(delta){
+  const [y,m] = (state.viewYM||ymKey(new Date())).split('-').map(Number);
+  const target = new Date(y, m+delta, 1);
+  scrollToDate(target); setViewYM(ymKey(target));
+}
+function updateSelectedHighlight(){
+  const scroll = $('calScroll');
+  scroll.querySelectorAll('.day.selected').forEach(c=>c.classList.remove('selected'));
+  const cell = scroll.querySelector('.day[data-date="'+fmtDate(state.selected)+'"]');
+  if(cell) cell.classList.add('selected');
+}
 function selectDay(d){
   state.selected = new Date(d);
-  if(d.getMonth()!==state.month.getMonth() || d.getFullYear()!==state.month.getFullYear()){
-    state.month = new Date(d.getFullYear(), d.getMonth(), 1);
-  }
-  renderCalendar();
+  updateSelectedHighlight();
   renderDay(d);
   if(document.body.classList.contains('is-iphone')) $('dayPane').classList.add('open');
 }
@@ -760,8 +800,7 @@ function goToEvent(ev){
   else if(ev.event_type==='weekly') target=parseDate(nextDateForWeekday(ev.weekday));
   else if(ev.event_type==='monthly'){ const d=new Date(); d.setDate(Math.min(ev.month_day||1,28)); target=d; }
   else target=new Date();
-  state.month=new Date(target.getFullYear(),target.getMonth(),1);
-  state.selected=target; renderCalendar(); renderDay(target);
+  state.selected=target; scrollToDate(target); setViewYM(ymKey(target)); updateSelectedHighlight(); renderDay(target);
   if(document.body.classList.contains('is-iphone')) $('dayPane').classList.add('open');
   openEditor(ev);
 }
@@ -784,9 +823,9 @@ function wireStaticUI(){
   $('loginBtn').addEventListener('click', doLogin);
   $('password').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
 
-  $('prevMonth').addEventListener('click', ()=>{ state.month=new Date(state.month.getFullYear(),state.month.getMonth()-1,1); renderCalendar(); });
-  $('nextMonth').addEventListener('click', ()=>{ state.month=new Date(state.month.getFullYear(),state.month.getMonth()+1,1); renderCalendar(); });
-  $('todayBtn').addEventListener('click', ()=>{ const t=new Date(); state.month=new Date(t.getFullYear(),t.getMonth(),1); selectDay(t); });
+  $('prevMonth').addEventListener('click', ()=> monthNav(-1));
+  $('nextMonth').addEventListener('click', ()=> monthNav(1));
+  $('todayBtn').addEventListener('click', ()=>{ const t=new Date(); scrollToDate(t); setViewYM(ymKey(t)); selectDay(t); });
 
   $('addBtn').addEventListener('click', ()=> openEditor(null));
   $('dayAddBtn').addEventListener('click', ()=> openEditor(null));

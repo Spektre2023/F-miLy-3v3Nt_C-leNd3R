@@ -1,6 +1,6 @@
 /* Simple service worker: lets the app install to the Home Screen and
    open instantly. Network-first so you always get fresh data when online. */
-const CACHE = 'familycal-v3';
+const CACHE = 'familycal-v4';
 const SHELL = ['./','./index.html','./styles.css','./app.js','./config.js','./manifest.webmanifest',
                './icons/icon-192.png','./icons/icon-180.png'];
 
